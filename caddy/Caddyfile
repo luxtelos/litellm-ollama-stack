@@ -1,0 +1,10 @@
+# replace with your real hostname. for LAN-only use, skip the tls profile entirely.
+llm.yourdomain.com {
+    reverse_proxy litellm:4000
+}
+
+# LAN / no-domain fallback (self-signed):
+# :443 {
+#     tls internal
+#     reverse_proxy litellm:4000
+# }

@@ -1,0 +1,212 @@
+# LiteLLM = the ONLY door. Nothing talks to ollama or ollama.com directly.
+#
+#   clients ──> LiteLLM :4000 ──┬──> https://ollama.com/v1   (cloud, OLLAMA_API_KEY)
+#                               └──> box ollama :11434       (local, free, private)
+#
+# Local models keep `input_cost_per_token: 0` so budget limits never block them.
+
+model_list:
+
+  # ================= CLOUD (via ollama.com, free plan models) =================
+  - model_name: agent                    # [tools] Claude Code driver
+    litellm_params:
+      model: openai/gpt-oss:120b
+      api_base: https://ollama.com/v1
+      api_key: os.environ/OLLAMA_API_KEY
+      timeout: 600
+    model_info:
+      max_input_tokens: 128000
+
+  - model_name: cloud-big                # [tools] 120B MoE, 12B active - batch work
+    litellm_params:
+      model: openai/nemotron-3-super
+      api_base: https://ollama.com/v1
+      api_key: os.environ/OLLAMA_API_KEY
+      timeout: 600
+
+  - model_name: think                    # reasoning-tuned
+    litellm_params:
+      model: openai/nemotron-3-ultra
+      api_base: https://ollama.com/v1
+      api_key: os.environ/OLLAMA_API_KEY
+      timeout: 900
+
+  - model_name: vision                   # the only one with eyes - screenshots, PDFs, diagrams
+    litellm_params:
+      model: openai/gemma4:31b
+      api_base: https://ollama.com/v1
+      api_key: os.environ/OLLAMA_API_KEY
+      timeout: 900
+    model_info:
+      supports_vision: true
+
+  - model_name: cloud-small              # cheapest on quota
+    litellm_params:
+      model: openai/nemotron-3-nano:30b
+      api_base: https://ollama.com/v1
+      api_key: os.environ/OLLAMA_API_KEY
+      timeout: 300
+
+  # --- PRO PLAN ONLY ($20/mo). swap `agent` to this after upgrading. ---
+  # - model_name: agent
+  #   litellm_params:
+  #     model: openai/kimi-k2.7-code
+  #     api_base: https://ollama.com/v1
+  #     api_key: os.environ/OLLAMA_API_KEY
+
+  # ================= LOCAL (box ollama, free + private) =================
+  - model_name: local                    # [tools] gpt-oss:20b MoE, ~12 tok/s
+    litellm_params:
+      model: ollama_chat/gpt-oss:20b
+      api_base: http://host.docker.internal:11434
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      timeout: 900
+
+  - model_name: coder                    # dense 14B, ~4 tok/s, one-shot only
+    litellm_params:
+      model: ollama_chat/qwen2.5-coder:14b
+      api_base: http://host.docker.internal:11434
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      timeout: 900
+
+  - model_name: embed
+    litellm_params:
+      model: ollama/nomic-embed-text
+      api_base: http://host.docker.internal:11434
+    model_info:
+      mode: embedding
+
+  # ========== JOB ALIASES - one name per job, so callers never think ==========
+  # Same three tiny models underneath. The NAME is the routing decision.
+  # Cheap + instant + zero cloud quota. Use these in scripts, n8n, git hooks.
+
+  # --- qwen2.5:0.5b jobs (60+ tok/s) ---
+  - model_name: classify                 # "is this config, test or source?" -> one word
+    litellm_params:
+      model: ollama_chat/qwen2.5:0.5b
+      api_base: http://host.docker.internal:11434
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      temperature: 0
+      max_tokens: 16
+      timeout: 60
+
+  - model_name: extract                  # logs/invoices/emails -> JSON
+    litellm_params:
+      model: ollama_chat/qwen2.5:0.5b
+      api_base: http://host.docker.internal:11434
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      temperature: 0
+      max_tokens: 512
+      timeout: 90
+
+  - model_name: gate                     # yes/no for shell scripts and n8n
+    litellm_params:
+      model: ollama_chat/qwen2.5:0.5b
+      api_base: http://host.docker.internal:11434
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      temperature: 0
+      max_tokens: 4
+      timeout: 30
+
+  - model_name: commit                   # diff -> commit message
+    litellm_params:
+      model: ollama_chat/qwen2.5-coder:3b
+      api_base: http://host.docker.internal:11434
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      temperature: 0.2
+      max_tokens: 120
+      timeout: 60
+
+  # --- qwen2.5-coder:3b jobs (~20 tok/s) ---
+  - model_name: docstring                # docstrings, type hints
+    litellm_params:
+      model: ollama_chat/qwen2.5-coder:3b
+      api_base: http://host.docker.internal:11434
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      temperature: 0.1
+      max_tokens: 512
+      timeout: 120
+
+  - model_name: oneliner                 # regex / awk / jq / bash you forgot
+    litellm_params:
+      model: ollama_chat/qwen2.5-coder:3b
+      api_base: http://host.docker.internal:11434
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      temperature: 0
+      max_tokens: 256
+      timeout: 60
+
+  - model_name: explain                  # what does this 20-line function do
+    litellm_params:
+      model: ollama_chat/qwen2.5-coder:3b
+      api_base: http://host.docker.internal:11434
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      max_tokens: 800
+      timeout: 180
+
+  # --- starcoder: FIM ONLY. hit /v1/completions, never /v1/chat/completions ---
+  - model_name: autocomplete
+    litellm_params:
+      model: ollama/starcoder:latest
+      api_base: http://host.docker.internal:11434
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      temperature: 0.1
+      max_tokens: 128
+      timeout: 30
+
+router_settings:
+  routing_strategy: simple-shuffle
+  enable_pre_call_checks: true
+  num_retries: 2
+  timeout: 900
+  allowed_fails: 3
+  cooldown_time: 30
+  redis_host: os.environ/REDIS_HOST
+  redis_port: os.environ/REDIS_PORT
+  fallbacks:                             # cloud quota gone -> drop to local, never hard-fail
+    - agent:       ["cloud-big", "cloud-small", "local"]
+    - cloud-big:   ["agent", "cloud-small", "local"]
+    - think:       ["cloud-big", "agent", "local"]
+    - cloud-small: ["local", "agent"]
+    - vision:      ["agent"]             # nothing local can see; degrade to text-only
+    - local:       ["coder", "agent"]
+    - coder:       ["local", "agent"]
+    - classify:    ["gate", "local"]
+    - extract:     ["explain", "local"]
+    - docstring:   ["explain", "coder"]
+    - oneliner:    ["explain", "coder"]
+    - explain:     ["coder", "local"]
+    - commit:      ["explain", "local"]
+  context_window_fallbacks:
+    - classify:  ["explain", "local", "agent"]
+    - extract:   ["explain", "local", "agent"]
+    - docstring: ["coder", "agent"]
+    - explain:   ["coder", "agent"]
+    - coder:     ["agent", "cloud-big"]
+    - local:     ["agent", "cloud-big"]
+
+litellm_settings:
+  drop_params: true
+  request_timeout: 900
+  cache: true
+  cache_params:
+    type: redis
+    host: os.environ/REDIS_HOST
+    port: os.environ/REDIS_PORT
+    ttl: 600
+  success_callback: ["postgres"]
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+  store_model_in_db: true

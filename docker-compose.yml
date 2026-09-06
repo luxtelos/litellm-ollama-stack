@@ -1,0 +1,87 @@
+# LiteLLM stack: proxy + postgres (UI, virtual keys, spend) + redis (cache + shared rate-limit)
+# run:  docker compose up -d
+# UI :  http://<box-lan-ip>:4000/ui   (login: $UI_USERNAME / $UI_PASSWORD)
+# TLS :  docker compose --profile tls up -d     (adds caddy on 80/443)
+
+services:
+  litellm:
+    image: ghcr.io/berriai/litellm-database:main-stable
+    container_name: litellm
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:4000:4000"   # IPv4 only; box has a global IPv6 addr and router IPv6 filtering is unverified
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql://litellm:${POSTGRES_PASSWORD}@postgres:5432/litellm
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      STORE_MODEL_IN_DB: "True"
+      DISABLE_AIOHTTP_TRANSPORT: "True"   # aiohttp transport + multi-worker = requests to ollama hang until timeout
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # lets container reach Ollama on the host
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "4"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:4000/health/liveliness',timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: litellm-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: litellm
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm -d litellm"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # not exposed to LAN on purpose. uncomment only if you need psql from outside:
+    # ports: ["127.0.0.1:5432:5432"]
+
+  redis:
+    image: redis:7-alpine
+    container_name: litellm-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: litellm-caddy
+    restart: unless-stopped
+    profiles: ["tls"]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on:
+      - litellm
+
+volumes:
+  pgdata:
+  redisdata:
+  caddydata:
+  caddyconfig:
