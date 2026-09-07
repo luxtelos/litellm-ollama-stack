@@ -16,6 +16,10 @@ for f in *.sh; do bash -n "$f"; done
 shellcheck -S warning *.sh
 ```
 
+Continuous integration runs these same commands on every pull request, plus a scan that fails
+the build if any tracked file contains a secret-like string. Nothing here is a check you cannot
+also run locally.
+
 **Check the compose file** still resolves with the template values:
 
 ```bash

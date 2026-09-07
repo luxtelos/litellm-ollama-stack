@@ -1,0 +1,53 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          shellcheck --version
+
+      - name: Shell syntax (bash -n)
+        run: |
+          shopt -s nullglob
+          files=(*.sh)
+          if [ ${#files[@]} -eq 0 ]; then echo "no shell scripts found"; exit 0; fi
+          for f in "${files[@]}"; do echo "checking $f"; bash -n "$f"; done
+
+      - name: Shellcheck
+        run: |
+          shopt -s nullglob
+          files=(*.sh)
+          if [ ${#files[@]} -eq 0 ]; then echo "no shell scripts found"; exit 0; fi
+          shellcheck -S warning "${files[@]}"
+
+      - name: Compose file resolves
+        run: |
+          cp .env.example .env
+          docker compose --env-file .env config -q
+          rm -f .env
+          echo "compose config OK"
+
+      - name: No secrets in tracked files
+        run: |
+          set +e
+          PATTERN='(sk-[A-Za-z0-9_-]{8,}|admin123|localpg123|192\.168\.1\.|101\.0\.6|info@|ssh\.luxtelos|/home/info)'
+          hits=$(git ls-files -z | xargs -0 grep -IEn "$PATTERN")
+          rc=$?
+          set -e
+          if [ $rc -eq 0 ]; then
+            echo "::error::secret-like strings found in tracked files:"
+            echo "$hits"
+            exit 1
+          fi
+          echo "secret scan clean"
