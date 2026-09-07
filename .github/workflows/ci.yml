@@ -42,7 +42,9 @@ jobs:
         run: |
           set +e
           PATTERN='(sk-[A-Za-z0-9_-]{8,}|admin123|localpg123|192\.168\.1\.|101\.0\.6|info@|ssh\.luxtelos|/home/info)'
-          hits=$(git ls-files -z | xargs -0 grep -IEn "$PATTERN")
+          # Exclude this file: it necessarily contains the pattern literals it searches for.
+          # ci.yml is human-reviewed on every change, which is the compensating control.
+          hits=$(git ls-files -z -- . ':!:.github/workflows/ci.yml' | xargs -0 grep -IEn "$PATTERN")
           rc=$?
           set -e
           if [ $rc -eq 0 ]; then
